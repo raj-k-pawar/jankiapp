@@ -1,0 +1,67 @@
+# Codemagic build configuration for the Janki staff app.
+# Put the contents of this folder at the root of the app's Git repository.
+
+definitions:
+  env: &env
+    flutter: 3.47.7
+    vars:
+      # The website the app talks to (must be HTTPS).
+      API_BASE_URL: "https://jankiagro.nextlogic.in"
+  scripts:
+    - &get_packages
+      name: Get packages
+      script: flutter pub get
+    - &check
+      name: Analyze and test
+      script: |
+        flutter analyze
+        flutter test
+
+workflows:
+  android-apk:
+    name: Android APK
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      <<: *env
+      # To sign with your own key (needed for Play Store, and so that a new
+      # APK installs over the old one), upload a keystore in Codemagic ▸ Team
+      # settings ▸ Code signing identities ▸ Android keystores, name it
+      # "janki_keystore" and uncomment the two lines below.
+      # android_signing:
+      #   - janki_keystore
+    scripts:
+      - *get_packages
+      - *check
+      - name: Build APK
+        script: flutter build apk --release --dart-define=API_BASE_URL=$API_BASE_URL
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
+  ios-ipa:
+    name: iOS IPA
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    # Needs an Apple Developer account connected in Codemagic ▸ Team settings ▸
+    # Integrations ▸ App Store Connect; set the integration's name here.
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      <<: *env
+      xcode: latest
+      ios_signing:
+        # ad_hoc = install on registered test iPhones; app_store = TestFlight / App Store
+        distribution_type: ad_hoc
+        bundle_identifier: com.jankiagro.jankiStaff
+    scripts:
+      - *get_packages
+      - *check
+      - name: Apply signing profiles
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
